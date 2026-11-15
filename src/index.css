@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --color-ha-navy: #0B1F3A;
+  --color-ha-teal: #0E7C86;
+  --color-ha-slate: #4A5B70;
+  --color-ha-red: #B42318;
+  --color-ha-amber: #93370D;
+  --color-ha-green: #146C3B;
+  --color-ha-ground: #F4F6F8;
+}
+
+@layer base {
+  html {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    color: #0B1F3A;
+    background-color: #F4F6F8;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Leaflet map container polish */
+.leaflet-container {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  z-index: 1;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 6px;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 2px 8px rgba(11, 31, 58, 0.08);
+}
+
+.leaflet-popup-tip {
+  box-shadow: none;
+}

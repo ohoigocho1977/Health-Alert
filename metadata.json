@@ -1,0 +1,6 @@
+{
+  "name": "HealthAlert",
+  "description": "AI-powered community health surveillance, statistical pattern detection, and early-warning platform for waterborne illness reporting and field investigation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
