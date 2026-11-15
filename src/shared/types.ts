@@ -292,14 +292,35 @@ export interface AuditLog {
 // Zod validation schemas (used across both frontend forms and backend API routes)
 export const registerSchema = z.object({
   email: z.string().trim().email('Enter a valid email address').max(120),
-  password: z.string().min(8, 'Password must be at least 8 characters').max(128),
-  displayName: z.string().trim().min(2, 'Enter a display name').max(80),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .max(128)
+    .regex(/[A-Za-z]/, 'Password must include at least one letter')
+    .regex(/[0-9]/, 'Password must include at least one number'),
+  displayName: z.string().trim().min(2, 'Enter a display name (min 2 characters)').max(80),
   primaryCommunityId: z.string().min(1, 'Select your community').max(64),
+  requestedRole: z.enum(['resident', 'health_worker', 'admin']).optional().default('resident'),
+  inviteCode: z.string().trim().max(128).optional(),
 });
 
 export const loginSchema = z.object({
   email: z.string().trim().email('Enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
+  rememberMe: z.boolean().optional().default(true),
+});
+
+export const adminCreateUserSchema = z.object({
+  email: z.string().trim().email('Enter a valid email address').max(120),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .max(128)
+    .regex(/[A-Za-z]/, 'Password must include at least one letter')
+    .regex(/[0-9]/, 'Password must include at least one number'),
+  displayName: z.string().trim().min(2, 'Enter a display name (min 2 characters)').max(80),
+  role: z.enum(['resident', 'health_worker', 'admin']),
+  assignedCommunityIds: z.array(z.string().min(1).max(64)).min(1, 'Assign at least one community'),
 });
 
 export const symptomReportSchema = z.object({

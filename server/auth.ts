@@ -23,17 +23,28 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return crypto.timingSafeEqual(keyBuf, derivedBuf);
 }
 
+export function verifyInviteSecret(provided: string | undefined, expected: string | undefined): boolean {
+  if (!provided || !expected || expected.trim().length === 0) return false;
+  const a = Buffer.from(provided.trim(), 'utf8');
+  const b = Buffer.from(expected.trim(), 'utf8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 interface SessionPayload {
   uid: string;
   role: UserRole;
   exp: number;
 }
 
-export function signSessionToken(uid: string, role: UserRole): string {
+export function signSessionToken(uid: string, role: UserRole, rememberMe = true): string {
+  const ttlMs = rememberMe
+    ? 1000 * 60 * 60 * 24 * 7 // 7 days
+    : 1000 * 60 * 60 * 12; // 12 hours
   const payload: SessionPayload = {
     uid,
     role,
-    exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 days
+    exp: Date.now() + ttlMs,
   };
   const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(encoded).digest('base64url');

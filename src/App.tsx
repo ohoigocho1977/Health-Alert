@@ -66,12 +66,16 @@ function AppRoutes() {
     <Routes>
       <Route
         path="/login"
-        element={user ? <Navigate to={defaultHomeForRole(user.role)} replace /> : <AuthPage />}
+        element={user ? <Navigate to={defaultHomeForRole(user.role)} replace /> : <AuthPage initialMode="login" />}
+      />
+      <Route
+        path="/register"
+        element={user ? <Navigate to={defaultHomeForRole(user.role)} replace /> : <AuthPage initialMode="register" />}
       />
       <Route
         path="/resident"
         element={
-          <RoleGuard allowedRoles={['resident', 'health_worker', 'admin']}>
+          <RoleGuard allowedRoles={['resident']}>
             <ResidentPortal />
           </RoleGuard>
         }
@@ -79,7 +83,7 @@ function AppRoutes() {
       <Route
         path="/worker"
         element={
-          <RoleGuard allowedRoles={['health_worker', 'admin']}>
+          <RoleGuard allowedRoles={['health_worker']}>
             <WorkerPortal />
           </RoleGuard>
         }
@@ -87,7 +91,7 @@ function AppRoutes() {
       <Route
         path="/admin"
         element={
-          <RoleGuard allowedRoles={['admin', 'health_worker']}>
+          <RoleGuard allowedRoles={['admin']}>
             <AdminDashboard />
           </RoleGuard>
         }

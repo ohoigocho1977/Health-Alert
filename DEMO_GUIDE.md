@@ -6,24 +6,25 @@ This guide walks judges and evaluators through the complete simulated end-to-end
 
 ---
 
-## 1. Signing In for the Demonstration
+## 1. Signing In & Registering Roles
 
-Open `/login`. On the left panel (**Demonstration Role Access**), click any role button for instant one-click authentication (no password entry required in the evaluation UI):
+Open `/login` (or `/register`).
 
-| Role Button | Account Persona | Default Landing Route |
-| --- | --- | --- |
-| **Health Administrator** | Dr. Amina Bello (State Surveillance Lead) | `/admin` |
-| **Community Health Worker** | Tunde Adeyemi (CHEW - Makoko & Ajegunle) | `/worker` |
-| **Community Resident** | Kemi Ogunleye (Makoko Resident) | `/resident` |
+- **Community Resident**: Switch to **Create account**, select **Community Resident**, and register with your email and password (`8+` characters with letters and numbers). You are signed in immediately and redirected to `/resident`.
+- **Community Health Worker / Health Administrator**: Register via **Create account** using the server-configured `HEALTH_WORKER_INVITE_CODE` or `ADMIN_INVITE_CODE` environment variables, sign in with a seeded account configured via `SEED_WORKER_PASSWORD` / `SEED_ADMIN_PASSWORD`, or have an existing Administrator provision your account in `/users`.
 
-*(If testing resident self-registration, switch to the **Resident registration** tab on `/login` and create a new account with your own test password; new self-registrations strictly receive `resident` permissions.)*
+| Role | Default Landing Route |
+| --- | --- |
+| **Health Administrator** | `/admin` |
+| **Community Health Worker** | `/worker` |
+| **Community Resident** | `/resident` |
 
 ---
 
 ## 2. Step-by-Step End-to-End Walkthrough
 
 ### Step 1 — Resident Experience (1-Minute Reporting & Advisories)
-1. Click **Community Resident** on `/login` to land on `/resident`.
+1. Sign in as a **Community Resident** to land on `/resident`.
 2. Observe the low-friction form:
    - Select **Makoko Waterfront**.
    - Choose symptoms (e.g., **Watery Diarrhoea** and **Vomiting**).

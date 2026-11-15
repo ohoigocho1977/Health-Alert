@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { hashPassword } from './auth.ts';
 import {
   DEFAULT_THRESHOLD_CONFIG,
@@ -36,8 +37,15 @@ function daysAgo(days: number): string {
   return new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
 }
 
+function createSeedPasswordHash(envPassword?: string): string {
+  const secret = envPassword?.trim() || crypto.randomBytes(32).toString('hex');
+  return hashPassword(secret);
+}
+
 export function createSeedDatabase(): DatabaseState {
-  const demoPasswordHash = hashPassword('HealthAlert2026!');
+  const adminPasswordHash = createSeedPasswordHash(process.env.SEED_ADMIN_PASSWORD);
+  const workerPasswordHash = createSeedPasswordHash(process.env.SEED_WORKER_PASSWORD);
+  const residentPasswordHash = createSeedPasswordHash(process.env.SEED_RESIDENT_PASSWORD);
 
   const communities: Community[] = [
     {
@@ -173,8 +181,8 @@ export function createSeedDatabase(): DatabaseState {
   const users: StoredUser[] = [
     {
       id: 'usr-admin-1',
-      email: 'admin@healthalert.ng',
-      passwordHash: demoPasswordHash,
+      email: (process.env.SEED_ADMIN_EMAIL || 'admin@healthalert.ng').toLowerCase(),
+      passwordHash: adminPasswordHash,
       displayName: 'Dr. Amina Bello (State Surveillance Lead)',
       role: 'admin',
       assignedCommunityIds: ['comm-makoko', 'comm-ajegunle', 'comm-ikorodu', 'comm-surulere'],
@@ -185,7 +193,7 @@ export function createSeedDatabase(): DatabaseState {
     {
       id: 'usr-chw-makoko',
       email: 'chw.makoko@healthalert.ng',
-      passwordHash: demoPasswordHash,
+      passwordHash: workerPasswordHash,
       displayName: 'Tunde Adeyemi (CHEW - Makoko)',
       role: 'health_worker',
       assignedCommunityIds: ['comm-makoko', 'comm-ajegunle'],
@@ -196,7 +204,7 @@ export function createSeedDatabase(): DatabaseState {
     {
       id: 'usr-chw-ikorodu',
       email: 'chw.ikorodu@healthalert.ng',
-      passwordHash: demoPasswordHash,
+      passwordHash: workerPasswordHash,
       displayName: 'Ngozi Okafor (CHEW - Ikorodu)',
       role: 'health_worker',
       assignedCommunityIds: ['comm-ikorodu', 'comm-surulere'],
@@ -207,7 +215,7 @@ export function createSeedDatabase(): DatabaseState {
     {
       id: 'usr-res-makoko',
       email: 'resident@healthalert.ng',
-      passwordHash: demoPasswordHash,
+      passwordHash: residentPasswordHash,
       displayName: 'Kemi Ogunleye (Makoko Resident)',
       role: 'resident',
       assignedCommunityIds: ['comm-makoko'],
@@ -218,7 +226,7 @@ export function createSeedDatabase(): DatabaseState {
     {
       id: 'usr-res-ajegunle',
       email: 'resident.aje@healthalert.ng',
-      passwordHash: demoPasswordHash,
+      passwordHash: residentPasswordHash,
       displayName: 'Chidi Nwosu (Ajegunle Resident)',
       role: 'resident',
       assignedCommunityIds: ['comm-ajegunle'],

@@ -15,21 +15,30 @@ import type {
 } from '../shared/types';
 
 const TOKEN_KEY = 'healthalert_session_token';
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
 
 export function getStoredToken(): string | null {
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
 }
 
-export function setStoredToken(token: string | null) {
+export function setStoredToken(token: string | null, persistent = true) {
   try {
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
+      if (persistent) {
+        localStorage.setItem(TOKEN_KEY, token);
+      } else {
+        sessionStorage.setItem(TOKEN_KEY, token);
+      }
     }
   } catch {
     // ignore storage errors
@@ -54,6 +63,15 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (
+      res.status === 401 &&
+      url !== '/api/auth/login' &&
+      url !== '/api/auth/register' &&
+      url !== '/api/auth/me'
+    ) {
+      setStoredToken(null);
+      unauthorizedHandler?.();
+    }
     const errMsg = typeof data?.error === 'string' ? data.error : `Request failed (${res.status})`;
     throw new Error(errMsg);
   }
@@ -61,7 +79,7 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
 }
 
 export const api = {
-  login: (body: { email: string; password: string }) =>
+  login: (body: { email: string; password: string; rememberMe?: boolean }) =>
     apiRequest<{ user: UserProfile; token: string }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -72,6 +90,8 @@ export const api = {
     password: string;
     displayName: string;
     primaryCommunityId: string;
+    requestedRole?: 'resident' | 'health_worker' | 'admin';
+    inviteCode?: string;
   }) =>
     apiRequest<{ user: UserProfile; token: string }>('/api/auth/register', {
       method: 'POST',
@@ -261,6 +281,18 @@ export const api = {
     apiRequest<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
 
   getAdminUsers: () => apiRequest<{ users: UserProfile[] }>('/api/admin/users'),
+
+  createAdminUser: (body: {
+    email: string;
+    password: string;
+    displayName: string;
+    role: 'resident' | 'health_worker' | 'admin';
+    assignedCommunityIds: string[];
+  }) =>
+    apiRequest<{ user: UserProfile }>('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   updateAdminUser: (
     id: string,

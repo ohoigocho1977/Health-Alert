@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { hashPassword, verifyPassword } from './auth.ts';
 import type { AuditLog, Community, UserRole } from '../src/shared/types.ts';
 import { createSeedDatabase, type DatabaseState } from './seedData.ts';
 
@@ -14,6 +15,46 @@ function ensureDir() {
   }
 }
 
+function syncConfiguredSeedCredentials(db: DatabaseState): boolean {
+  let changed = false;
+  const adminPwd = process.env.SEED_ADMIN_PASSWORD?.trim();
+  const workerPwd = process.env.SEED_WORKER_PASSWORD?.trim();
+  const residentPwd = process.env.SEED_RESIDENT_PASSWORD?.trim();
+  const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+
+  if (adminEmail) {
+    const adminUser = db.users.find((u) => u.id === 'usr-admin-1');
+    if (adminUser && adminUser.email !== adminEmail) {
+      adminUser.email = adminEmail;
+      changed = true;
+    }
+  }
+  if (adminPwd) {
+    const adminUser = db.users.find((u) => u.id === 'usr-admin-1');
+    if (adminUser && !verifyPassword(adminPwd, adminUser.passwordHash)) {
+      adminUser.passwordHash = hashPassword(adminPwd);
+      changed = true;
+    }
+  }
+  if (workerPwd) {
+    for (const u of db.users.filter((x) => x.id === 'usr-chw-makoko' || x.id === 'usr-chw-ikorodu')) {
+      if (!verifyPassword(workerPwd, u.passwordHash)) {
+        u.passwordHash = hashPassword(workerPwd);
+        changed = true;
+      }
+    }
+  }
+  if (residentPwd) {
+    for (const u of db.users.filter((x) => x.id === 'usr-res-makoko' || x.id === 'usr-res-ajegunle')) {
+      if (!verifyPassword(residentPwd, u.passwordHash)) {
+        u.passwordHash = hashPassword(residentPwd);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 export function loadDatabase(): DatabaseState {
   if (state) return state;
   ensureDir();
@@ -21,12 +62,16 @@ export function loadDatabase(): DatabaseState {
     try {
       const raw = fs.readFileSync(DB_FILE, 'utf8');
       state = JSON.parse(raw) as DatabaseState;
+      if (syncConfiguredSeedCredentials(state)) {
+        saveDatabase(state);
+      }
       return state;
     } catch {
       // Fall back to fresh seed if file is corrupted
     }
   }
   state = createSeedDatabase();
+  syncConfiguredSeedCredentials(state);
   saveDatabase(state);
   return state;
 }
@@ -40,7 +85,12 @@ export function saveDatabase(nextState: DatabaseState): void {
 }
 
 export function resetDemoDatabase(): DatabaseState {
+  const currentUsers = state?.users || [];
   const fresh = createSeedDatabase();
+  const seedIds = new Set(fresh.users.map((u) => u.id));
+  const customUsers = currentUsers.filter((u) => !seedIds.has(u.id));
+  fresh.users = [...fresh.users, ...customUsers];
+  syncConfiguredSeedCredentials(fresh);
   saveDatabase(fresh);
   return fresh;
 }

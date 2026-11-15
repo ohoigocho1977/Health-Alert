@@ -1,16 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { api, setStoredToken } from '../lib/api';
-import type { UserProfile } from '../shared/types';
+import { api, setStoredToken, setUnauthorizedHandler } from '../lib/api';
+import type { UserProfile, UserRole } from '../shared/types';
 
 interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<UserProfile>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<UserProfile>;
   register: (data: {
     email: string;
     password: string;
     displayName: string;
     primaryCommunityId: string;
+    requestedRole?: UserRole;
+    inviteCode?: string;
   }) => Promise<UserProfile>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -35,12 +37,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null);
+    });
     refreshUser();
+    return () => setUnauthorizedHandler(null);
   }, [refreshUser]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await api.login({ email, password });
-    setStoredToken(res.token);
+  const login = useCallback(async (email: string, password: string, rememberMe = true) => {
+    const res = await api.login({ email, password, rememberMe });
+    setStoredToken(res.token, rememberMe);
     setUser(res.user);
     return res.user;
   }, []);
@@ -51,9 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password: string;
       displayName: string;
       primaryCommunityId: string;
+      requestedRole?: UserRole;
+      inviteCode?: string;
     }) => {
       const res = await api.register(data);
-      setStoredToken(res.token);
+      setStoredToken(res.token, true);
       setUser(res.user);
       return res.user;
     },
@@ -63,6 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     try {
       await api.logout();
+    } catch {
+      // Clear local session even if server call fails
     } finally {
       setStoredToken(null);
       setUser(null);

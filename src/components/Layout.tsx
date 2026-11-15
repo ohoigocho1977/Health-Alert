@@ -98,6 +98,15 @@ export function Layout({
   const homePath =
     user.role === 'admin' ? '/admin' : user.role === 'health_worker' ? '/worker' : '/resident';
 
+  const handleSignOut = async () => {
+    setMobileNavOpen(false);
+    setUserMenuOpen(false);
+    setSearchQuery('');
+    setSelectedCommunityId('');
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
   const sidebar = (
     <div className="flex flex-col h-full bg-[#0B1F3A] text-white select-none">
       <div className="px-5 pt-5 pb-4">
@@ -137,7 +146,7 @@ export function Layout({
         </p>
         <button
           type="button"
-          onClick={() => logout()}
+          onClick={handleSignOut}
           className="mt-3 w-full py-1.5 px-3 text-left text-[12px] font-medium text-[#CBD5E1] hover:text-white hover:bg-white/10 rounded-[6px] transition-colors"
         >
           Sign out
@@ -259,10 +268,7 @@ export function Layout({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      logout();
-                    }}
+                    onClick={handleSignOut}
                     className="w-full text-left px-3 py-2 text-[13px] text-[#B42318] hover:bg-[#FEE4E2]/40"
                   >
                     Sign out

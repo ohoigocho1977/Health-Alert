@@ -3,6 +3,7 @@ import express, { type NextFunction, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  adminCreateUserSchema,
   alertCreateSchema,
   communityCreateSchema,
   fieldVerificationSchema,
@@ -29,6 +30,7 @@ import {
   requireRole,
   sanitizeUser,
   signSessionToken,
+  verifyInviteSecret,
   verifyPassword,
   verifySessionToken,
   type AuthenticatedRequest,
@@ -52,11 +54,12 @@ function isHttpsRequest(req: AuthenticatedRequest): boolean {
   return req.secure || proto === 'https' || (Array.isArray(proto) && proto.includes('https'));
 }
 
-function setSessionCookie(req: AuthenticatedRequest, res: Response, token: string) {
+function setSessionCookie(req: AuthenticatedRequest, res: Response, token: string, persistent = true) {
   const secureAttr = isHttpsRequest(req) ? '; Secure' : '';
+  const maxAgeAttr = persistent ? `; Max-Age=${60 * 60 * 24 * 7}` : '';
   res.setHeader(
     'Set-Cookie',
-    `ha_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secureAttr}; Max-Age=${60 * 60 * 24 * 7}`
+    `ha_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secureAttr}${maxAgeAttr}`
   );
 }
 
@@ -131,6 +134,25 @@ async function startServer() {
       return;
     }
 
+    const requestedRole: UserRole = parsed.data.requestedRole || 'resident';
+    if (requestedRole === 'health_worker') {
+      if (!verifyInviteSecret(parsed.data.inviteCode, process.env.HEALTH_WORKER_INVITE_CODE)) {
+        res.status(403).json({
+          error:
+            'Invalid or unconfigured Community Health Worker authorization code. Contact a Health Administrator.',
+        });
+        return;
+      }
+    } else if (requestedRole === 'admin') {
+      if (!verifyInviteSecret(parsed.data.inviteCode, process.env.ADMIN_INVITE_CODE)) {
+        res.status(403).json({
+          error:
+            'Invalid or unconfigured Health Administrator authorization code. Contact your system owner.',
+        });
+        return;
+      }
+    }
+
     const db = loadDatabase();
     const normalizedEmail = parsed.data.email.toLowerCase();
     if (db.users.some((u) => u.email.toLowerCase() === normalizedEmail)) {
@@ -145,14 +167,18 @@ async function startServer() {
     }
 
     const now = new Date().toISOString();
-    // Self-registration is strictly restricted to 'resident' role to prevent privilege escalation
+    const assignedCommunityIds =
+      requestedRole === 'admin'
+        ? db.communities.filter((c) => c.active).map((c) => c.id)
+        : [community.id];
+
     const newUser = {
       id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       email: normalizedEmail,
       passwordHash: hashPassword(parsed.data.password),
       displayName: stripHtml(parsed.data.displayName),
-      role: 'resident' as UserRole,
-      assignedCommunityIds: [community.id],
+      role: requestedRole,
+      assignedCommunityIds,
       primaryCommunityId: community.id,
       active: true,
       createdAt: now,
@@ -163,15 +189,15 @@ async function startServer() {
       actorUid: newUser.id,
       actorRole: newUser.role,
       actorEmail: newUser.email,
-      action: 'REGISTER_RESIDENT',
+      action: `REGISTER_${requestedRole.toUpperCase()}`,
       entityType: 'users',
       entityId: newUser.id,
-      details: `Registered resident account for community ${community.name}.`,
+      details: `Registered ${requestedRole} account for community ${community.name}.`,
     });
     saveDatabase(db);
 
-    const token = signSessionToken(newUser.id, newUser.role);
-    setSessionCookie(req, res, token);
+    const token = signSessionToken(newUser.id, newUser.role, true);
+    setSessionCookie(req, res, token, true);
     res.status(201).json({ user: sanitizeUser(newUser), token });
   });
 
@@ -204,12 +230,37 @@ async function startServer() {
       return;
     }
 
-    const token = signSessionToken(user.id, user.role);
-    setSessionCookie(req, res, token);
+    const persistent = parsed.data.rememberMe !== false;
+    const token = signSessionToken(user.id, user.role, persistent);
+    recordAuditLog(db, {
+      actorUid: user.id,
+      actorRole: user.role,
+      actorEmail: user.email,
+      action: 'LOGIN_SUCCESS',
+      entityType: 'auth',
+      entityId: user.id,
+      details: `Signed in (${persistent ? 'persistent' : 'session'} login).`,
+    });
+    saveDatabase(db);
+
+    setSessionCookie(req, res, token, persistent);
     res.json({ user: sanitizeUser(user), token });
   });
 
   app.post('/api/auth/logout', (req: AuthenticatedRequest, res) => {
+    if (req.authUser) {
+      const db = loadDatabase();
+      recordAuditLog(db, {
+        actorUid: req.authUser.id,
+        actorRole: req.authUser.role,
+        actorEmail: req.authUser.email,
+        action: 'LOGOUT',
+        entityType: 'auth',
+        entityId: req.authUser.id,
+        details: 'User signed out.',
+      });
+      saveDatabase(db);
+    }
     clearSessionCookie(req, res);
     res.json({ ok: true });
   });
@@ -217,6 +268,11 @@ async function startServer() {
   app.get('/api/auth/me', (req: AuthenticatedRequest, res) => {
     if (!req.authUser) {
       res.status(401).json({ error: 'Not authenticated.' });
+      return;
+    }
+    if (!req.authUser.active) {
+      clearSessionCookie(req, res);
+      res.status(403).json({ error: 'Account has been deactivated.' });
       return;
     }
     res.json({ user: req.authUser });
@@ -1093,6 +1149,54 @@ async function startServer() {
     res.json({ users: db.users.map(sanitizeUser) });
   });
 
+  app.post('/api/admin/users', requireRole('admin'), (req: AuthenticatedRequest, res) => {
+    const parsed = adminCreateUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid user data.' });
+      return;
+    }
+
+    const db = loadDatabase();
+    const normalizedEmail = parsed.data.email.toLowerCase();
+    if (db.users.some((u) => u.email.toLowerCase() === normalizedEmail)) {
+      res.status(409).json({ error: 'An account with this email already exists.' });
+      return;
+    }
+
+    const validIds = new Set(db.communities.map((c) => c.id));
+    const assignedCommunityIds = parsed.data.assignedCommunityIds.filter((id) => validIds.has(id));
+    if (assignedCommunityIds.length === 0) {
+      res.status(400).json({ error: 'Select at least one valid community.' });
+      return;
+    }
+
+    const newUser = {
+      id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      email: normalizedEmail,
+      passwordHash: hashPassword(parsed.data.password),
+      displayName: stripHtml(parsed.data.displayName),
+      role: parsed.data.role,
+      assignedCommunityIds,
+      primaryCommunityId: assignedCommunityIds[0],
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    db.users.push(newUser);
+    recordAuditLog(db, {
+      actorUid: req.authUser!.id,
+      actorRole: req.authUser!.role,
+      actorEmail: req.authUser!.email,
+      action: 'CREATE_USER',
+      entityType: 'users',
+      entityId: newUser.id,
+      details: `Provisioned ${newUser.role} account ${newUser.email}.`,
+    });
+    saveDatabase(db);
+
+    res.status(201).json({ user: sanitizeUser(newUser) });
+  });
+
   app.patch('/api/admin/users/:id', requireRole('admin'), (req: AuthenticatedRequest, res) => {
     const db = loadDatabase();
     const target = db.users.find((u) => u.id === req.params.id);
@@ -1168,8 +1272,13 @@ async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
+    const disableHmr = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        ...(disableHmr ? { hmr: false, watch: null } : {}),
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1186,10 +1295,30 @@ async function startServer() {
     });
   }
 
-  const port = Number(process.env.PORT) || 3000;
+  const port = resolveListenPort();
   app.listen(port, '0.0.0.0', () => {
     console.log(`HealthAlert server listening on http://0.0.0.0:${port}`);
   });
+}
+
+function resolveListenPort(): number {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--port' && argv[i + 1]) {
+      const p = Number(argv[i + 1]);
+      if (Number.isFinite(p) && p > 0) return p;
+    }
+    if (argv[i]?.startsWith('--port=')) {
+      const p = Number(argv[i].slice('--port='.length));
+      if (Number.isFinite(p) && p > 0) return p;
+    }
+  }
+  const envPort = Number(process.env.PORT);
+  const nginxPort = Number(process.env.NGINX_PORT);
+  if (Number.isFinite(envPort) && envPort > 0 && envPort !== nginxPort) {
+    return envPort;
+  }
+  return Number(process.env.DEFAULT_APP_PORT) || 3000;
 }
 
 startServer().catch((err) => {

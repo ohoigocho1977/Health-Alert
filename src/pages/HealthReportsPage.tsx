@@ -108,12 +108,14 @@ export function HealthReportsPage() {
           : 'Submitted community and field reports scoped to your authorized communities.'
       }
       headerActions={
-        <Link
-          to={user?.role === 'resident' ? '/resident' : '/resident'}
-          className="h-9 px-4 bg-[#0E7C86] hover:bg-[#0B666E] text-white text-[13px] font-semibold rounded-[6px] inline-flex items-center"
-        >
-          + Submit report
-        </Link>
+        user?.role === 'admin' ? undefined : (
+          <Link
+            to={user?.role === 'health_worker' ? '/worker' : '/resident'}
+            className="h-9 px-4 bg-[#0E7C86] hover:bg-[#0B666E] text-white text-[13px] font-semibold rounded-[6px] inline-flex items-center"
+          >
+            + Submit report
+          </Link>
+        )
       }
     >
       <div className="space-y-4">
